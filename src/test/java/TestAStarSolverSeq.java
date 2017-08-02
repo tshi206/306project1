@@ -1,4 +1,5 @@
 import Exporter.GraphExporter;
+import FileUtilities.FileUtils;
 import Graph.EdgeWithCost;
 import Graph.Graph;
 import Graph.Vertex;
@@ -10,8 +11,8 @@ import Solver.Interfaces.ISolver;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.BufferedWriter;
-import java.io.OutputStreamWriter;
+
+import static junit.framework.TestCase.assertEquals;
 
 /**
  * Unit tests for the A* Solver implementation that's sequential (no parallel programming is tested here).
@@ -27,21 +28,20 @@ public class TestAStarSolverSeq {
     private ISolver solver;
 
     @Before
-    public void setup(){
+    public void setup() {
         graph = new Graph<Vertex, EdgeWithCost<Vertex>>();
         parser = new InputParser<Vertex, EdgeWithCost<Vertex>>(new VertexCtor(), new EdgeCtor());
     }
 
     @Test
     public void testStraightLine(){
-        graph = parser.doParseAndFinaliseGraph(TEST_FILES_PATH+"input_straightline.dot");
-        solver = new AStarSolver(graph, PROCESSOR_COUNT);
+        graph = parser.doParseAndFinaliseGraph(TEST_FILES_PATH+"input_straightline_4nodes.dot");
+        solver = new AStarSolver(graph, PROCESSOR_COUNT); // Must construct solver only after graph has been parsed in.
         solver.doSolve();
-        // TODO read in expected output file for comparison with toString() of solved graph.
-        final GraphExporter<Vertex,EdgeWithCost<Vertex>> vertexEdgeWithCostGraphExporter;
-        vertexEdgeWithCostGraphExporter = new GraphExporter<Vertex, EdgeWithCost<Vertex>>();
-        vertexEdgeWithCostGraphExporter.doExport(graph, new BufferedWriter(new OutputStreamWriter(System.out)));
 
+        String actual = GraphExporter.exportGraphToString(graph);
+        String expected = FileUtils.readFileToString(TEST_FILES_PATH+"output_straightline_4nodes.dot");
+        assertEquals(expected, actual);
     }
 
 }
