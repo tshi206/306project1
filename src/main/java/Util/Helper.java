@@ -1,3 +1,5 @@
+package Util;
+
 import lombok.NonNull;
 import org.graphstream.graph.Graph;
 import org.graphstream.graph.Node;
@@ -27,5 +29,11 @@ public class Helper {
                 calculateBottomLevels(n, level + v.getAttribute("Weight", Double.class));
             });
         }
+    }
+
+    public static void stripUneeded(@NonNull final Graph g) {
+        g.getNodeSet().forEach(e -> {
+            e.removeAttribute("BL");
+        });
     }
 }
