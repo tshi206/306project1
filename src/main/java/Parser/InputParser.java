@@ -10,6 +10,7 @@ import Parser.Interfaces.IVertexCtor;
 import lombok.NonNull;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.util.LinkedHashMap;
@@ -52,10 +53,20 @@ public class InputParser<V extends Vertex, E extends Edge<V>> {
     }
 
     /**
-     * Wrapper for the parser; other objects can easily invocate Graph parsing on
+     * Wrapper for the parser; other objects can easily invoke Graph parsing on
      * a InputParser object when they provide a dot file.
+     * @param file the path of the file
      */
     public Graph<V, E> doParseAndFinaliseGraph(String file){
+        return doParseAndFinaliseGraph(new File(file));
+    }
+
+    /**
+     * Wrapper for the parser; other objects can easily invoke Graph parsing on
+     * a InputParser object when they provide a dot file.
+     * @param file the file
+     */
+    public Graph<V, E> doParseAndFinaliseGraph(File file){
         Graph<V,E> graph = new Graph<V,E>();
         try {
             doParse(graph, new BufferedReader(new FileReader(file)));
@@ -88,6 +99,7 @@ public class InputParser<V extends Vertex, E extends Edge<V>> {
                     break;
                 case LINEFEED:
                     currState = processLineFeed();
+                    pos--;
                     break;
             }
             pos++;
@@ -173,9 +185,13 @@ public class InputParser<V extends Vertex, E extends Edge<V>> {
 
     private STATE processFullHeader() throws ParserException {
         if(tokenBuffer.isEmpty()) throw new ParserException("Empty Header");
-        if(tokenBuffer.size() != 2) throw new ParserException("Invalid Header");
+        if(tokenBuffer.size() < 1) throw new ParserException("Invalid Header");
         if(!tokenBuffer.get(0).matches("[Dd][Ii][Gg][Rr][Aa][Pp][Hh]")) throw new ParserException("Not a digraph");
-        this.graph.setName(tokenBuffer.get(1));
+        if(tokenBuffer.size() >= 2) {
+            this.graph.setName(tokenBuffer.get(1));
+        }
+        else
+            this.graph.setName("digraph");
         if(hasHeader) throw new ParserException("Malformed dot file");
         this.hasHeader = true;
         flushBuffer();

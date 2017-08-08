@@ -1,5 +1,7 @@
 package Solver;
 
+import CommonInterface.ISearchState;
+import Datastructure.FastPriorityBlockingQueue;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -10,21 +12,30 @@ import java.util.concurrent.*;
 import java.util.stream.IntStream;
 
 public final class AStarSolverPar extends AbstractSolver {
+    private final Queue<SearchState> queue;
     public AStarSolverPar(Graph graph, int processorCount) {
         super(graph, processorCount);
+        queue = new FastPriorityBlockingQueue<>();
     }
 
     @Override
     public void doSolve() {
         SearchState.init(graph);
-
-        Queue<SearchState> queue = new PriorityBlockingQueue<>();
-        Set<SearchState> set = Collections.newSetFromMap(new ConcurrentHashMap<SearchState, Boolean>());
+        if(updater != null) {
+            /* We have an updater and a UI to update */
+            Timer timer = new Timer();
+            timer.scheduleAtFixedRate(new TimerTask() {
+                                          @Override
+                                          public void run() {
+                                              updater.update(queue.peek());
+                                          }
+                                      },
+                    200, 200);
+        }
         queue.add(new SearchState());
 
         while(true) {
             SearchState s = queue.remove();
-            set.remove(s);
             if(s.getSize() == graph.getNodeCount()) {
                 // We have found THE optimal solution
                 scheduleVertices(s);
@@ -33,8 +44,7 @@ public final class AStarSolverPar extends AbstractSolver {
             s.getLegalVertices().parallelStream().forEach( v -> {
                 IntStream.of(0, processorCount-1).parallel().forEach( i -> {
                             SearchState next = new SearchState(s, v, i);
-                            if(!set.contains(next)) {
-                                set.add(next);
+                            if(!queue.contains(next)) {
                                 queue.add(next);
                             }
                         }
@@ -43,6 +53,7 @@ public final class AStarSolverPar extends AbstractSolver {
             /* Expansion */
         }
     }
+
 
     /*
     OPEN ← emptyState
