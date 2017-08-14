@@ -2,6 +2,8 @@ package GUI;
 
 import CommonInterface.ISearchState;
 import CommonInterface.ISolver;
+import GUI.CSS.GraphCSS;
+import GUI.Models.GMouseManager;
 import Graph.EdgeWithCost;
 import Graph.Graph;
 import Graph.Vertex;
@@ -28,7 +30,9 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 /**
@@ -99,15 +103,20 @@ public class SwingMain implements Runnable, IUpdatableState {
 
         final NumberAxis xAxis = new NumberAxis();
         final CategoryAxis yAxis = new CategoryAxis();
+        final int procN = solver.getProcessorCount();
+        String[] procStrNames = new String[procN];
         scheduleChart = new ScheduleChart<>(xAxis, yAxis);
-        XYChart.Series[] seriesArr = new XYChart.Series[visualGraph.getNodeSet().size()];
+        XYChart.Series[] seriesArr = new XYChart.Series[solver.getProcessorCount()];
+
+        IntStream.range(0, procN).forEach(i -> {
+            XYChart.Series series = new XYChart.Series();
+            seriesArr[i] = series;
+            procStrNames[i] = procStr.concat(String.valueOf(i + 1));
+            seriesArr[i].getData().add(new XYChart.Data(0, procStrNames[i], new ScheduleChart.ExtraData(0, "")));
+        });
         String[] nodeNameArr = new String[visualGraph.getNodeSet().size()];
         for (int i = 0; i < seriesArr.length; i++) {
-            XYChart.Series series = new XYChart.Series();
             nodeNameArr[i] = visualGraph.getNode(i).getId();
-            series.setName(visualGraph.getNode(i).getId());
-            series.getData().add(new XYChart.Data(1, visualGraph.getNode(i).getId(), new ScheduleChart.ExtraData(50, "status-red")));
-            seriesArr[i] = series;
         }
 
         xAxis.setLabel("");
@@ -117,7 +126,7 @@ public class SwingMain implements Runnable, IUpdatableState {
         yAxis.setLabel("");
         yAxis.setTickLabelFill(Color.CHOCOLATE);
         yAxis.setTickLabelGap(10);
-        yAxis.setCategories(FXCollections.<String>observableArrayList(Arrays.asList(nodeNameArr)));
+        yAxis.setCategories(FXCollections.<String>observableArrayList(procStrNames));
 
         scheduleChart.setLegendVisible(false);
         scheduleChart.setBlockHeight(50);
@@ -132,17 +141,21 @@ public class SwingMain implements Runnable, IUpdatableState {
     private static ViewPanel viewPanel = null;
     private static ViewerPipe viewerPipe = null;
     private static JFrame rootFrame;
+    private static final String procStr = "Processor";
+    private static final ColorManager colorManager = new ColorManager();
 
     public static final String STYLE_RESORUCE = "url('style.css')";
 
     public static void init(org.graphstream.graph.Graph graph, ISolver solveri) {
         visualGraph = Graphs.clone(graph);
+        visualGraph.addAttribute("ui.stylesheet", GraphCSS.css);
         solver = solveri;
         initRest();
     }
 
     public static void init(Graph<? extends Vertex, ? extends EdgeWithCost> graph, ISolver solveri) {
         visualGraph = Helper.convertToGsGraph(graph);
+        visualGraph.addAttribute("ui.stylesheet", GraphCSS.css);
         solver = solveri;
         initRest();
     }
@@ -153,6 +166,7 @@ public class SwingMain implements Runnable, IUpdatableState {
         viewer.enableAutoLayout();
         viewerPipe = viewer.newViewerPipe();
         viewPanel = viewer.addDefaultView(false);
+        viewPanel.addMouseListener(new GMouseManager(viewPanel));
         visualGraph.addAttribute("ui.stylesheet", STYLE_RESORUCE);
         rootFrame = new JFrame();
     }
@@ -164,7 +178,6 @@ public class SwingMain implements Runnable, IUpdatableState {
         rootFrame.show();
     }
 
-    private static String[] stylesStr = {"status-red", "status-blue", "status-green"};
 
     @Override
     @Synchronized
@@ -179,17 +192,18 @@ public class SwingMain implements Runnable, IUpdatableState {
         int[] processors = searchState.getProcessors();
         int[] startTimes = searchState.getStartTimes();
         List<XYChart.Series> seriesList = new ArrayList<>();
-        IntStream.of(0, visualGraph.getNodeSet().size() - 1).forEach(i -> {
-        });
         visualGraph.getNodeSet().forEach(n -> {
             int index = n.getIndex();
-            if (processors[index] != -1) {
+            int procOn = processors[index];
+            if (procOn != -1) {
                 XYChart.Series series = new XYChart.Series();
                 n.addAttribute("ui.class", "sched");
-                n.addAttribute("processor", processors[index] + 1);
+                n.addAttribute("processor", procOn + 1);
                 n.addAttribute("startTime", startTimes[index]);
-                @NonNull Integer cost = n.getAttribute("Weight");
-                series.getData().add(new XYChart.Data(startTimes[index], n.getId(), new ScheduleChart.ExtraData(cost, stylesStr[(processors[index] + 1) % stylesStr.length])));
+                @NonNull Double aDouble = n.getAttribute("Weight");
+                int cost = aDouble.intValue();
+                //series.getData().add(new XYChart.Data(startTimes[index], n.getId(), new ScheduleChart.ExtraData(cost, stylesStr[(processors[index] + 1) % stylesStr.length])));
+                series.getData().add(new XYChart.Data(startTimes[index], procStr + String.valueOf(procOn + 1), new ScheduleChart.ExtraData(cost, colorManager.next())));
                 seriesList.add(series);
             }
         });
@@ -206,6 +220,26 @@ public class SwingMain implements Runnable, IUpdatableState {
         Scene scene = new Scene(scheduleChart);
         fxPanel.setScene(scene);
         fxPanel.setPreferredSize(new Dimension(500, 500));
+    }
+
+    private static class ColorManager implements Iterator<String> {
+        static final String[] stylesStr = {"status-red", "status-blue", "status-green", "status-magenta", "status-yellow", "status-cyan"};
+        private AtomicInteger atomicInteger = new AtomicInteger();
+
+        @Override
+        public boolean hasNext() {
+            return true;
+        }
+
+        @Override
+        @Synchronized
+        public String next() {
+            int i = atomicInteger.incrementAndGet();
+            if (i >= stylesStr.length) {
+                atomicInteger.set(0);
+                return stylesStr[0];
+            } else return stylesStr[i];
+        }
     }
 
 }
