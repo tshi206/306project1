@@ -21,6 +21,8 @@ import java.util.Set;
 public class SearchState implements Comparable<SearchState>, ISearchState {
     @Getter
     private static Graph<Vertex, EdgeWithCost<Vertex>> graph;
+//    @Getter
+//    private static org.graphstream.graph.Graph graph;
     @Getter
     private static int totalSize;
     @Getter
@@ -36,6 +38,17 @@ public class SearchState implements Comparable<SearchState>, ISearchState {
 
     @Getter
     private int DFcost; // Required for DFSSolver
+
+    public static void init(Graph<Vertex, EdgeWithCost<Vertex>> g) {
+        graph = g;
+        totalSize = g.getVertices().size();
+    }
+
+//    public static void init(org.graphstream.graph.Graph g) {
+//        graph = g;
+//        totalSize = g.getVertices().size();
+//    }
+
 
     public SearchState() {
         this.priority = 0;
