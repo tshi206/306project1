@@ -2,13 +2,11 @@ package GUI;
 
 import CommonInterface.ISearchState;
 import CommonInterface.ISolver;
-import GUI.CSS.GraphCSS;
-import GUI.Models.GMouseManager;
 import Graph.EdgeWithCost;
 import Graph.Graph;
 import Graph.Vertex;
 import Util.Helper;
-
+import com.alee.laf.WebLookAndFeel;
 import com.jgoodies.forms.layout.CellConstraints;
 import com.jgoodies.forms.layout.FormLayout;
 import javafx.application.Platform;
@@ -24,7 +22,6 @@ import org.graphstream.graph.implementations.Graphs;
 import org.graphstream.ui.swingViewer.ViewPanel;
 import org.graphstream.ui.view.Viewer;
 import org.graphstream.ui.view.ViewerPipe;
-import org.graphstream.ui.view.util.DefaultMouseManager;
 
 import javax.swing.*;
 import java.awt.*;
@@ -58,7 +55,147 @@ public class SwingMain implements Runnable, IUpdatableState {
     private SolverWorker solverWorker;
     private ScheduleChart<Number, String> scheduleChart;
 
-//    public static final String STYLE_RESORUCE = "url('style.css')";
+    public SwingMain() {
+        $$$setupUI$$$();
+        startButton.addActionListener(actionEvent -> {
+            solverWorker = new SolverWorker();
+            solverWorker.execute();
+        });
+        Platform.runLater(() -> initFX(jfxPanel1));
+        stopButton.addActionListener(actionEvent -> {
+            if (solverWorker != null) {
+                solverWorker.cancel(true);
+                solverWorker = null;
+            }
+        });
+    }
+
+    public static void init(org.graphstream.graph.Graph graph, ISolver solveri) {
+        visualGraph = Graphs.clone(graph);
+        solver = solveri;
+        initRest();
+    }
+
+    public static void init(Graph<? extends Vertex, ? extends EdgeWithCost> graph, ISolver solveri) {
+        visualGraph = Helper.convertToGsGraph(graph);
+        solver = solveri;
+        initRest();
+    }
+
+    private static void initRest() {
+        System.setProperty("org.graphstream.ui.renderer", "org.graphstream.ui.j2dviewer.J2DGraphRenderer");
+        WebLookAndFeel.install();
+        viewer = new Viewer(visualGraph, Viewer.ThreadingModel.GRAPH_IN_ANOTHER_THREAD);
+        viewer.enableAutoLayout();
+        viewerPipe = viewer.newViewerPipe();
+        viewPanel = viewer.addDefaultView(false);
+        visualGraph.addAttribute("ui.stylesheet", STYLE_RESORUCE);
+        rootFrame = new JFrame();
+        inited = true;
+    }
+
+    public void createUIComponents() {
+        viewPanel1 = viewPanel;
+        viewPanel1.setPreferredSize(new Dimension(500, 500));
+        jfxPanel1 = new JFXPanel();
+
+        final NumberAxis xAxis = new NumberAxis();
+        final CategoryAxis yAxis = new CategoryAxis();
+        final int procN = solver.getProcessorCount();
+        String[] procStrNames = new String[procN];
+        scheduleChart = new ScheduleChart<>(xAxis, yAxis);
+        XYChart.Series[] seriesArr = new XYChart.Series[solver.getProcessorCount()];
+
+        IntStream.range(0, procN).forEach(i -> {
+            XYChart.Series series = new XYChart.Series();
+            seriesArr[i] = series;
+            procStrNames[i] = procStr.concat(String.valueOf(i + 1));
+            seriesArr[i].getData().add(new XYChart.Data(0, procStrNames[i], new ScheduleChart.ExtraData(0, "", "")));
+        });
+        String[] nodeNameArr = new String[visualGraph.getNodeSet().size()];
+        for (int i = 0; i < seriesArr.length; i++) {
+            nodeNameArr[i] = visualGraph.getNode(i).getId();
+        }
+
+        xAxis.setLabel("");
+        xAxis.setTickLabelFill(Color.CHOCOLATE);
+        xAxis.setMinorTickCount(4);
+
+        yAxis.setLabel("");
+        yAxis.setTickLabelFill(Color.CHOCOLATE);
+        yAxis.setTickLabelGap(10);
+        yAxis.setCategories(FXCollections.<String>observableArrayList(procStrNames));
+
+        scheduleChart.setLegendVisible(false);
+        scheduleChart.setBlockHeight(50);
+        scheduleChart.getData().addAll(seriesArr);
+
+        scheduleChart.getStylesheets().add("chart.css");
+    }
+
+    @Override
+    public void run() {
+        if (!inited) throw new RuntimeException(getClass() + " has to be initialise'd before running");
+        progressBar1.setMaximum(visualGraph.getNodeSet().size());
+        rootFrame.setContentPane(panel1);
+        rootFrame.pack();
+        rootFrame.setPreferredSize(new Dimension(1000, 1000));
+        rootFrame.setMinimumSize(new Dimension(1000, 1000));
+        rootFrame.setVisible(true);
+    }
+
+    @Override
+    @Synchronized
+    public void updateWithState(ISearchState searchState) {
+        if (searchState == null) return;
+        // Remove the past data
+        visualGraph.getNodeSet().forEach(e -> {
+            e.removeAttribute("ui.class");
+            e.removeAttribute("processor");
+            e.removeAttribute("startTime");
+        });
+        int[] processors = searchState.getProcessors();
+        int[] startTimes = searchState.getStartTimes();
+        List<XYChart.Series> seriesList = new ArrayList<>();
+        visualGraph.getNodeSet().forEach(n -> {
+            int index = n.getIndex();
+            int procOn = processors[index];
+            if (procOn != -1) {
+                XYChart.Series series = new XYChart.Series();
+                n.addAttribute("ui.class", "sched");
+                n.addAttribute("processor", procOn + 1);
+                n.addAttribute("startTime", startTimes[index]);
+                Integer cost = null;
+                try {
+                    Double d = n.getAttribute("Weight");
+                    cost = d.intValue();
+                } catch (ClassCastException e) {
+                    cost = n.getAttribute("Weight");
+                    // Weight attr has to be double or int
+                }
+                series.getData().add(new XYChart.Data(startTimes[index]
+                        , procStr + String.valueOf(procOn + 1)
+                        , new ScheduleChart.ExtraData(cost, colorManager.next(), n.getId())));
+                seriesList.add(series);
+            }
+        });
+        int curSize = searchState.getSize();
+        if (progressBar1.getValue() < curSize) {
+            progressBar1.setValue(curSize);
+        }
+
+        Platform.runLater(() -> {
+            scheduleChart.getData().clear();
+            XYChart.Series[] seriesArr = new XYChart.Series[seriesList.size()];
+            scheduleChart.getData().addAll(seriesList.toArray(seriesArr));
+        });
+    }
+
+    private void initFX(JFXPanel fxPanel) {
+        Scene scene = new Scene(scheduleChart);
+        fxPanel.setScene(scene);
+        fxPanel.setPreferredSize(new Dimension(500, 500));
+    }
 
     /**
      * Method generated by IntelliJ IDEA GUI Designer
@@ -96,189 +233,6 @@ public class SwingMain implements Runnable, IUpdatableState {
         return panel1;
     }
 
-
-    private class SolverWorker extends SwingWorker<Void, Void> {
-
-        @Override
-        protected Void doInBackground() throws Exception {
-            solver.associateUI(SwingMain.this);
-            solver.doSolve();
-            return null;
-        }
-
-        /**
-         * Executed on the <i>Event Dispatch Thread</i> after the {@code doInBackground}
-         * method is finished. The default
-         * implementation does nothing. Subclasses may override this method to
-         * perform completion actions on the <i>Event Dispatch Thread</i>. Note
-         * that you can query status inside the implementation of this method to
-         * determine the result of this task or whether this task has been cancelled.
-         *
-         * @see #doInBackground
-         * @see #isCancelled()
-         * @see #get
-         */
-        @Override
-        protected void done() {
-            GraphViewer graphViewer = (GraphViewer)viewer;
-            graphViewer.colorNodes(visualGraph);
-        }
-
-
-    }
-
-    public SwingMain() {
-        $$$setupUI$$$();
-        startButton.addActionListener(actionEvent -> {
-            solverWorker = new SolverWorker();
-            solverWorker.execute();
-        });
-        Platform.runLater(() -> initFX(jfxPanel1));
-        stopButton.addActionListener(actionEvent -> {
-            if (solverWorker != null) {
-                solverWorker.cancel(true);
-                solverWorker = null;
-            }
-        });
-    }
-
-
-    public void createUIComponents() {
-        viewPanel1 = viewPanel;
-        viewPanel1.setPreferredSize(new Dimension(500, 1000));
-        jfxPanel1 = new JFXPanel();
-
-        final NumberAxis xAxis = new NumberAxis();
-        final CategoryAxis yAxis = new CategoryAxis();
-        final int procN = solver.getProcessorCount();
-        String[] procStrNames = new String[procN];
-        scheduleChart = new ScheduleChart<>(xAxis, yAxis);
-        XYChart.Series[] seriesArr = new XYChart.Series[solver.getProcessorCount()];
-
-        IntStream.range(0, procN).forEach(i -> {
-            XYChart.Series series = new XYChart.Series();
-            seriesArr[i] = series;
-            procStrNames[i] = procStr.concat(String.valueOf(i + 1));
-            seriesArr[i].getData().add(new XYChart.Data(0, procStrNames[i], new ScheduleChart.ExtraData(0, "", "")));
-        });
-        String[] nodeNameArr = new String[visualGraph.getNodeSet().size()];
-        for (int i = 0; i < seriesArr.length; i++) {
-            nodeNameArr[i] = visualGraph.getNode(i).getId();
-        }
-
-        xAxis.setLabel("");
-        xAxis.setTickLabelFill(Color.CHOCOLATE);
-        xAxis.setMinorTickCount(4);
-
-        yAxis.setLabel("");
-        yAxis.setTickLabelFill(Color.CHOCOLATE);
-        yAxis.setTickLabelGap(10);
-        yAxis.setCategories(FXCollections.<String>observableArrayList(procStrNames));
-
-        scheduleChart.setLegendVisible(false);
-        scheduleChart.setBlockHeight(50);
-        scheduleChart.getData().addAll(seriesArr);
-
-        scheduleChart.getStylesheets().add("chart.css");
-    }
-
-
-
-    public static void init(org.graphstream.graph.Graph graph, ISolver solveri) {
-        visualGraph = graph;
-        visualGraph.addAttribute("ui.stylesheet", GraphCSS.css);
-        solver = solveri;
-        initRest();
-    }
-
-    public static void init(Graph<? extends Vertex, ? extends EdgeWithCost> graph, ISolver solveri) {
-        visualGraph = Helper.convertToGsGraph(graph);
-        visualGraph.addAttribute("ui.stylesheet", GraphCSS.css);
-        solver = solveri;
-        initRest();
-    }
-
-    private static void initRest() {
-        System.setProperty("org.graphstream.ui.renderer", "org.graphstream.ui.j2dviewer.J2DGraphRenderer");
-
-        viewer = new GraphViewer(visualGraph, Viewer.ThreadingModel.GRAPH_IN_ANOTHER_THREAD);
-        viewer.enableAutoLayout();
-        viewerPipe = viewer.newViewerPipe();
-        viewPanel = viewer.addDefaultView(false);
-        viewPanel.addMouseListener(new GMouseManager(viewPanel, visualGraph));
-        viewPanel.addMouseWheelListener(new GMouseManager(viewPanel, visualGraph));
-//        visualGraph.addAttribute("ui.stylesheet", STYLE_RESORUCE);
-        rootFrame = new JFrame();
-        inited = true;
-    }
-
-    @Override
-    public void run() {
-        if (!inited) throw new RuntimeException(getClass() + " has to be initialise'd before running");
-        progressBar1.setMaximum(visualGraph.getNodeSet().size());
-        rootFrame.setContentPane(panel1);
-        rootFrame.pack();
-        rootFrame.setPreferredSize(new Dimension(1000, 1000));
-        rootFrame.setMinimumSize(new Dimension(1000, 1000));
-        rootFrame.setVisible(true);
-    }
-
-    @Override
-    @Synchronized
-    public void updateWithState(ISearchState searchState) {
-        if (searchState == null) return;
-        // Remove the past data
-        visualGraph.getNodeSet().forEach(e -> {
-            e.removeAttribute("ui.class");
-            e.removeAttribute("processor");
-            e.removeAttribute("startTime");
-        });
-        int[] processors = searchState.getProcessors();
-        int[] startTimes = searchState.getStartTimes();
-        List<XYChart.Series> seriesList = new ArrayList<>();
-        visualGraph.getNodeSet().forEach(n -> {
-            int index = n.getIndex();
-            int procOn = processors[index];
-            if (procOn != -1) {
-                XYChart.Series series = new XYChart.Series();
-                n.addAttribute("ui.class", "sched");
-                n.addAttribute("processor", procOn + 1);
-                n.addAttribute("startTime", startTimes[index]);
-
-                Integer cost = null;
-                try {
-                    Double d = n.getAttribute("Weight");
-                    cost = d.intValue();
-                } catch (ClassCastException e) {
-                    cost = n.getAttribute("Weight");
-                    // Weight attr has to be double or int
-                }
-                series.getData().add(new XYChart.Data(startTimes[index]
-                        , procStr + String.valueOf(procOn + 1)
-                        , new ScheduleChart.ExtraData(cost, colorManager.next(), n.getId())));
-
-                seriesList.add(series);
-            }
-        });
-        int curSize = searchState.getSize();
-        if (progressBar1.getValue() < curSize) {
-            progressBar1.setValue(curSize);
-        }
-
-        Platform.runLater(() -> {
-            scheduleChart.getData().clear();
-            XYChart.Series[] seriesArr = new XYChart.Series[seriesList.size()];
-            scheduleChart.getData().addAll(seriesList.toArray(seriesArr));
-        });
-    }
-
-    private void initFX(JFXPanel fxPanel) {
-        Scene scene = new Scene(scheduleChart);
-        fxPanel.setScene(scene);
-        fxPanel.setPreferredSize(new Dimension(500, 500));
-    }
-
-
     private static class ColorManager implements Iterator<String> {
         static final String[] stylesStr = {"status-red", "status-blue", "status-green", "status-magenta", "status-yellow", "status-cyan"};
         private AtomicInteger atomicInteger = new AtomicInteger();
@@ -299,5 +253,19 @@ public class SwingMain implements Runnable, IUpdatableState {
         }
     }
 
+    private class SolverWorker extends SwingWorker<Void, Void> {
+
+        @Override
+        protected Void doInBackground() throws Exception {
+            solver.associateUI(SwingMain.this);
+            solver.doSolve();
+            return null;
+        }
+
+        @Override
+        protected void done() {
+            // print output, graph exporter
+        }
+    }
 
 }
