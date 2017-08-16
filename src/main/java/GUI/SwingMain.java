@@ -266,6 +266,7 @@ public class SwingMain implements Runnable, IUpdatableState {
                 seriesList.add(series);
             }
         });
+<<<<<<< HEAD
 
 
         //update the GS viewer
@@ -274,6 +275,9 @@ public class SwingMain implements Runnable, IUpdatableState {
 
         //update progress bar
         int curSize = solver.getStateCounter();
+=======
+        int curSize = searchState.getNumVertices();
+>>>>>>> dc273608befba289ff076f8317880a279d191b7c
         if (progressBar1.getValue() < curSize) {
             progressBar1.setValue(curSize);
         }
