@@ -2,8 +2,14 @@ package GUI;
 
 import CommonInterface.ISearchState;
 import CommonInterface.ISolver;
+import Exporter.GraphExporter;
 import GUI.CSS.GraphCSS;
+import GUI.Events.SolversThread;
+import GUI.Events.SysInfoMonitoringThread;
+import GUI.Interfaces.IUpdatableState;
+import GUI.Interfaces.SwingMainInterface;
 import GUI.Models.GMouseManager;
+import GUI.Models.SysInfoModel;
 import Graph.EdgeWithCost;
 import Graph.Graph;
 import Graph.Vertex;
@@ -21,15 +27,12 @@ import javafx.scene.chart.NumberAxis;
 import javafx.scene.chart.XYChart;
 import javafx.scene.paint.Color;
 import lombok.Synchronized;
-import org.graphstream.graph.implementations.Graphs;
 import org.graphstream.ui.swingViewer.ViewPanel;
 import org.graphstream.ui.view.Viewer;
 import org.graphstream.ui.view.ViewerPipe;
-import org.graphstream.ui.view.util.DefaultMouseManager;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.MouseWheelListener;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -39,7 +42,7 @@ import java.util.stream.IntStream;
 /**
  * Created by e on 7/08/17.
  */
-public class SwingMain implements Runnable, IUpdatableState {
+public class SwingMain implements SwingMainInterface {
 
     public static final String STYLE_RESORUCE = "url('style.css')";
     private static final String procStr = "Processor";
@@ -59,6 +62,10 @@ public class SwingMain implements Runnable, IUpdatableState {
     private JProgressBar progressBar1;
     private SolverWorker solverWorker;
     private ScheduleChart<Number, String> scheduleChart;
+
+    private static Graph _graph;
+
+    private static SolversThread solversThread = null;
 
 //    public static final String STYLE_RESORUCE = "url('style.css')";
 
@@ -126,24 +133,37 @@ public class SwingMain implements Runnable, IUpdatableState {
             viewer.colorNodes(visualGraph);
             progressBar1.setValue(progressBar1.getMaximum());
             // print output, graph exporter
+            System.out.println(GraphExporter.exportGraphToString(_graph));
+//            System.out.println(Helper.gsGraphToDOTString(visualGraph));
         }
 
 
     }
 
-    public SwingMain() {
+    public SwingMain() { //Pause and resume feature
         $$$setupUI$$$();
         startButton.addActionListener(actionEvent -> {
-            solverWorker = new SolverWorker();
-            solverWorker.execute();
+            SysInfoMonitoringThread sysInfoMonitoringThread = new SysInfoMonitoringThread(SysInfoModel.getInstance());
+            sysInfoMonitoringThread.addListener(SwingMain.this);
+            sysInfoMonitoringThread.start();
+//            solverWorker = new SolverWorker();
+//            solverWorker.execute();
+            solversThread = new SolversThread(SwingMain.this, solver);
+            solversThread.addListener(SwingMain.this);
+            solversThread.start();
+            stopButton.setEnabled(true);
         });
         Platform.runLater(() -> initFX(jfxPanel1));
         stopButton.addActionListener(actionEvent -> {
-            if (solverWorker != null) {
-                solverWorker.cancel(true);
-                solverWorker = null;
+            if ((solversThread != null)&&(solversThread.isAlive())){
+                solversThread.suspend();
+                startButton.removeActionListener(startButton.getActionListeners()[0]);
+                startButton.addActionListener(actionEventResume -> {
+                    solversThread.resume();
+                });
             }
         });
+        stopButton.setEnabled(false);
     }
 
 
@@ -196,6 +216,7 @@ public class SwingMain implements Runnable, IUpdatableState {
     }
 
     public static void init(Graph<? extends Vertex, ? extends EdgeWithCost> graph, ISolver solveri) {
+        _graph = graph;
         visualGraph = Helper.convertToGsGraph(graph);
         visualGraph.addAttribute("ui.stylesheet", GraphCSS.css);
         solver = solveri;
@@ -206,12 +227,12 @@ public class SwingMain implements Runnable, IUpdatableState {
         System.setProperty("org.graphstream.ui.renderer", "org.graphstream.ui.j2dviewer.J2DGraphRenderer");
         WebLookAndFeel.install();
         viewer = new GraphViewer(visualGraph, Viewer.ThreadingModel.GRAPH_IN_ANOTHER_THREAD);
-        viewer.initializeLabels(visualGraph);
+        viewer.initializeLabels(visualGraph); //make sure this method get called immediately after the call to constructor
         viewer.enableAutoLayout();
         viewerPipe = viewer.newViewerPipe();
         viewPanel = viewer.addDefaultView(false);
-        viewPanel.addMouseListener(new GMouseManager(viewPanel, visualGraph));
-        viewPanel.addMouseWheelListener(new GMouseManager(viewPanel, visualGraph));
+        viewPanel.addMouseListener(new GMouseManager(viewPanel, visualGraph, viewer));
+        viewPanel.addMouseWheelListener(new GMouseManager(viewPanel, visualGraph, viewer));
 //        visualGraph.addAttribute("ui.stylesheet", STYLE_RESORUCE);
         rootFrame = new JFrame();
         inited = true;
@@ -221,7 +242,9 @@ public class SwingMain implements Runnable, IUpdatableState {
     public void run() {
         if (!inited) throw new RuntimeException(getClass() + " has to be initialise'd before running");
         //estimate of the maximum number of states
-        progressBar1.setMaximum(visualGraph.getNodeSet().size()*visualGraph.getNodeSet().size()*solver.getProcessorCount());
+        progressBar1.setMaximum((int) (Math.pow((double) visualGraph.getNodeCount(),
+                (double) solver.getProcessorCount()) / Math.pow(2d, (double) (solver.getProcessorCount() + 1))
+                    / (double)visualGraph.getNodeCount()));
         rootFrame.setContentPane(panel1);
         rootFrame.pack();
         rootFrame.setPreferredSize(new Dimension(1000, 1000));
@@ -266,18 +289,16 @@ public class SwingMain implements Runnable, IUpdatableState {
                 seriesList.add(series);
             }
         });
-<<<<<<< HEAD
 
 
         //update the GS viewer
-        viewer.updateNodes(visualGraph);
+        viewer.updateNodes();
 
 
         //update progress bar
         int curSize = solver.getStateCounter();
-=======
-        int curSize = searchState.getNumVertices();
->>>>>>> dc273608befba289ff076f8317880a279d191b7c
+
+
         if (progressBar1.getValue() < curSize) {
             progressBar1.setValue(curSize);
         }
@@ -290,6 +311,29 @@ public class SwingMain implements Runnable, IUpdatableState {
         });
     }
 
+    @Override
+    public void notifyOfSolversThreadComplete() {
+        //Update colorNode AND set progress bar to maximum here;
+        viewer.colorNodes(visualGraph);
+        progressBar1.setValue(progressBar1.getMaximum());
+        startButton.setEnabled(false);
+        stopButton.setEnabled(false);
+        // print output, graph exporter
+        System.out.println(GraphExporter.exportGraphToString(_graph));
+    }
+
+    @Override
+    public void notifyOfSysInfoThreadUpdate() {
+        updateSysInfo(SysInfoModel.getInstance());
+    }
+
+    @Override
+    public void updateSysInfo(SysInfoModel sysInfoModel) {
+        //TODO - Update sys info in GUI.
+        //TODO - delete following statements once GUI implementation finishes
+//        System.out.print("Memory Usage: " + sysInfoModel.getMem().getUsedPercent()+"\t");
+//        System.out.println("CPU Usage:    " + (sysInfoModel.getCpuPerc().getCombined()*100)+"\t");
+    }
 
     private void initFX(JFXPanel fxPanel) {
         Scene scene = new Scene(scheduleChart);
