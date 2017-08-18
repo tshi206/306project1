@@ -20,10 +20,10 @@ public class ScheduleChart<X, Y> extends XYChart<X, Y> {
 
     @Getter
     @Setter
-    private double blockHeight = 10;
+    private double blockHeight = 5;
 
     public ScheduleChart(@NamedArg("xAxis") Axis<X> xAxis, @NamedArg("yAxis") Axis<Y> yAxis) {
-        this(xAxis, yAxis, FXCollections.<Series<X, Y>>observableArrayList());
+        this(xAxis, yAxis, FXCollections.observableArrayList());
     }
 
     public ScheduleChart(@NamedArg("xAxis") Axis<X> xAxis, @NamedArg("yAxis") Axis<Y> yAxis, @NamedArg("data") ObservableList<Series<X, Y>> data) {
