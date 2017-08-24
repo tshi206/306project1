@@ -9,6 +9,9 @@ import fj.data.IterableW;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NonNull;
+import lombok.Value;
+import lombok.experimental.NonFinal;
+import lombok.experimental.Wither;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -21,26 +24,24 @@ import java.util.stream.IntStream;
  *
  * @author Dovahkiin Huang, Will Molloy
  */
-@EqualsAndHashCode(exclude = {"processors", "startTimes"}) // exclude partial schedules where nodes only differ by their processor
-public final class SearchState implements Comparable<SearchState>, ISearchState {
-    @Getter
-    private static Graph<Vertex, EdgeWithCost<Vertex>> graph;
-    @Getter
+
+@Value
+@EqualsAndHashCode(exclude = {"processors"}) // exclude partial schedules where nodes only differ by their processor TODO this needs testing!
+public class SearchState implements Comparable<SearchState>, ISearchState {
+    @NonFinal private static Graph<Vertex, EdgeWithCost<Vertex>> graph;
     private final int[] processors;
     @Getter
     private final int[] startTimes;
-    @Getter
-    private int underestimate;
-    @Getter
+    @NonFinal private int underestimate;
     private Vertex lastVertex;
     @Getter
     private int numVertices;
 
-    public static void initialise(Graph<Vertex, EdgeWithCost<Vertex>> graph) {
+    static void initialise(Graph<Vertex, EdgeWithCost<Vertex>> graph) {
         SearchState.graph = graph;
     }
 
-    public SearchState() {
+    SearchState() {
         underestimate = 0;
         numVertices = 0;
         lastVertex = null;
@@ -49,9 +50,8 @@ public final class SearchState implements Comparable<SearchState>, ISearchState 
         startTimes = processors.clone();
     }
 
-    public SearchState(SearchState prevState, Vertex vertex, int processorId) {
+    SearchState(SearchState prevState, Vertex vertex, int processor) {
         underestimate = prevState.underestimate;
-        numVertices = prevState.numVertices;
         /* clone() is slightly faster */
         processors = prevState.processors.clone();
         startTimes = prevState.startTimes.clone();
@@ -65,7 +65,7 @@ public final class SearchState implements Comparable<SearchState>, ISearchState 
             // For each vertex on the SAME processor id, we find the last finish time,
             // which in turn, yields the earliest possible start time.
             int aid = v.getAssignedId();
-            if (processors[aid] == processorId) {
+            if (processors[aid] == processor) {
                 int newTime = startTimes[aid] + graph.getVertex(aid).getCost();
                 if (newTime > t) return newTime;
             }
@@ -85,7 +85,7 @@ public final class SearchState implements Comparable<SearchState>, ISearchState 
             // users should use getLegalVertices() to ensure the Vertex can be scheduled.
             Vertex v = e.getFrom();
             int aid = v.getAssignedId();
-            if (processors[aid] != processorId) {
+            if (processors[aid] != processor) {
                 int newTime = this.startTimes[aid] + v.getCost() + e.getCost();
                 if (newTime > t) return newTime;
             }
@@ -113,7 +113,7 @@ public final class SearchState implements Comparable<SearchState>, ISearchState 
         time = graph.getInwardsEdges(vertex).foldLeft(dependencyFoldingFn, time);
 
         // Store the result we obtained
-        processors[vertex.getAssignedId()] = processorId;
+        processors[vertex.getAssignedId()] = processor;
         startTimes[vertex.getAssignedId()] = time;
 
         // Underestimate function
@@ -121,7 +121,7 @@ public final class SearchState implements Comparable<SearchState>, ISearchState 
 
         if (underestimate < nextPriority) underestimate = nextPriority;
 
-        numVertices++;
+        numVertices = prevState.getNumVertices() + 1;
     }
 
     /**
