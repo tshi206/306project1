@@ -3,12 +3,17 @@ package GUI.Events;
 
 import GUI.Interfaces.ThreadCompleteListener;
 import GUI.Models.SysInfoModel;
+import javafx.application.Platform;
 
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.CopyOnWriteArraySet;
 
+/**
+ * A timer, essentially, it keeps firing 'events' to request Controller to go over to SysInfoModel and acquire the latest sys info.
+ * @author Mason Shi
+ */
 public class SysInfoMonitoringThread extends Thread{
 
     //Make sure to add listeners
@@ -78,11 +83,14 @@ public class SysInfoMonitoringThread extends Thread{
         timer.scheduleAtFixedRate(new TimerTask() {
                                       @Override
                                       public void run() {
-                                          try{
-                                              sysInfoModel.update();
-                                          }finally {
-                                              notifyListeners();
-                                          }
+                                          Platform.runLater(() ->
+                                          {
+                                              try {
+                                                  sysInfoModel.update();
+                                              } finally {
+                                                  notifyListeners();
+                                              }
+                                          });
                                       }
                                   },
                 100, 100);

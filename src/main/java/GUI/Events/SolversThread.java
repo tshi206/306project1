@@ -2,6 +2,7 @@ package GUI.Events;
 
 import CommonInterface.ISolver;
 import Exporter.GraphExporter;
+import GUI.Frame.view.Controller;
 import GUI.GraphViewer;
 import GUI.Interfaces.ThreadCompleteListener;
 import GUI.GUIMain;
@@ -12,6 +13,11 @@ import lombok.Getter;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 
+/**
+ * A user-level thread as a complementary replacement for SwingWorker in order to support Start, Pause feature (See #Controller).
+ * It fires an notification to Controller once Solver safely finishes.
+ * @author Mason Shi
+ */
 public class SolversThread extends Thread {
 
     private final Set<ThreadCompleteListener> listeners = new CopyOnWriteArraySet<>();
@@ -19,26 +25,14 @@ public class SolversThread extends Thread {
     @Getter
     private GUIMain GUIMain; //Make sure to add listeners
     @Getter
+    private Controller controller; //Make sure to add listeners
+    @Getter
     private ISolver solver;
-    @Getter
-    private GraphViewer graphViewer;
-    @Getter
-    private GraphExporter<Vertex, Edge<Vertex>> graphExporter;
 
-    public SolversThread(GUIMain GUIMain, ISolver iSolver, GraphViewer graphViewer, GraphExporter<Vertex, Edge<Vertex>> graphExporter){
+    public SolversThread(Controller controller, ISolver iSolver){
         super();
-        this.GUIMain = GUIMain;
+        this.controller = controller;
         this.solver = iSolver;
-        this.graphViewer = graphViewer;
-        this.graphExporter = graphExporter;
-    }
-
-    public SolversThread(GUIMain GUIMain, ISolver iSolver){
-        super();
-        this.GUIMain = GUIMain;
-        this.solver = iSolver;
-        this.graphViewer = null;
-        this.graphExporter = null;
     }
 
     /**
@@ -85,7 +79,7 @@ public class SolversThread extends Thread {
     }
 
     public void doRun(){
-        solver.associateUI(GUIMain);
+        solver.associateUI(controller);
         solver.doSolve();
     }
 

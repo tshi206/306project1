@@ -3,6 +3,7 @@ package Solver;
 import Graph.EdgeWithCost;
 import Graph.Graph;
 import Graph.Vertex;
+import javafx.application.Platform;
 import lombok.Data;
 import lombok.Getter;
 
@@ -27,6 +28,7 @@ public final class DFSSolver extends AbstractSolver {
     private int currUpperBound;
     private SearchState currBestState;
 
+    private SearchState intermediateState; // represent a partial schedule which is going to be used by GUI updater until Solver finishes.
 
     public DFSSolver(Graph<Vertex, EdgeWithCost<Vertex>> graph, int processorCount) {
         super(graph, processorCount);
@@ -36,7 +38,6 @@ public final class DFSSolver extends AbstractSolver {
     public void doSolve() {
         SearchState.initialise(graph);
 
-
         if (updater != null) {
             /* We have an updater and a UI to update */
             isUpdatableProgressBar = true;
@@ -44,9 +45,7 @@ public final class DFSSolver extends AbstractSolver {
             timer = new Timer();
             timer.scheduleAtFixedRate(new TimerTask() {
                                           @Override
-                                          public void run() {
-                                              updater.update(currBestState, solver);
-                                          }
+                                          public void run() { Platform.runLater(() -> {updater.update(intermediateState, solver);});}
                                       },
                     100, 100);
         }
@@ -63,14 +62,15 @@ public final class DFSSolver extends AbstractSolver {
         scheduleVertices(currBestState);
 
         if (updater != null && timer != null) {
-            updater.update(currBestState, this);
             timer.cancel();
+            updater.update(currBestState, this);
         }
     }
 
     private void solving(SearchState currState) {
         currState.getLegalVertices().forEach(vertex -> IntStream.range(0, processorCount).forEach(processor -> {
                     SearchState nextState = new SearchState(currState, vertex, processor);
+                    intermediateState = nextState;
                     if (nextState.getUnderestimate() >= currUpperBound) {
                         return;
                     }
@@ -78,12 +78,10 @@ public final class DFSSolver extends AbstractSolver {
                         updateLog(nextState);
                         return;
                     }
-
                     //increase the state counter for GUI, process only when there is a GUI to update
                     if (isUpdatableProgressBar){ //true if there is a GUI progress bar needs to be updated
                         stateCounter++;
                     }
-
                     solving(nextState);
                 }
         ));

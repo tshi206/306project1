@@ -2,16 +2,20 @@ package GUI.Frame;
 
 import java.io.IOException;
 
+import GUI.Frame.view.Controller;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.scene.layout.AnchorPane;
 import javafx.stage.Stage;
 
+import javax.swing.*;
+
 /**
- * This is an application class to show all information about our program
+ * This is an application class to fire the event dispatch thread which loads all the gui component using Controller specified in FXML
+ * This is the standard entry point of JavaFX framework.
  * 
- * @author Vincent
+ * @author Vincent Chen, slightly modified by Mason Shi
  * @see DataVisualization
  */
 public class GUIEntry extends Application {
@@ -24,6 +28,8 @@ public class GUIEntry extends Application {
 		this.primaryStage.setTitle("Scheduler");
 
 		initLayout();
+
+        Controller.sysInfoMonitoringThread.start();
 	}
 
 	/**
@@ -40,12 +46,9 @@ public class GUIEntry extends Application {
 			primaryStage.setScene(scene);
 			primaryStage.setResizable(false);
 			primaryStage.show();
+
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-	}
-
-	public static void main(String[] args) {
-		launch(args);
 	}
 }
