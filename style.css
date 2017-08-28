@@ -1,0 +1,13 @@
+node {
+    text-alignment: above;
+}
+
+node.sched {
+    stroke-color: red;
+    fill-color: red;
+}
+
+edge {
+    arrow-shape:arrow;
+}
+
